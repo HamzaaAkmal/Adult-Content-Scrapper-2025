@@ -2,6 +2,23 @@
 
 An intelligent, fully autonomous Streamlit-based web scraper that extracts NSFW audio clips from video content using AI-powered classification with Groq's Whisper model.
 
+## 🚀 Quick Deploy
+
+### Local Machine
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+### VPS/Cloud Server (Automated)
+```bash
+curl -sSL https://raw.githubusercontent.com/HamzaaAkmal/Adult-Content-Scrapper-2025/main/setup_vps.sh | bash
+```
+
+📖 **[Complete VPS Deployment Guide](VPS_DEPLOYMENT.md)** | **[5-Minute VPS Setup](QUICKSTART_VPS.md)**
+
+---
+
 ## 🌟 Features
 
 ### Smart Web Crawling
