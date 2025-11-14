@@ -127,7 +127,7 @@ class ClipExtractor:
         start_time: float,
         duration: float
     ) -> bool:
-        """Run ffmpeg to extract audio clip."""
+        """Run ffmpeg to extract audio clip with high quality for ML training."""
         try:
             cmd = [
                 'ffmpeg',
@@ -136,8 +136,10 @@ class ClipExtractor:
                 '-t', str(duration),
                 '-vn',  # No video
                 '-acodec', 'libmp3lame',
-                '-b:a', '192k',
-                '-ar', '44100',
+                '-b:a', '256k',  # High quality for ML training
+                '-ar', '44100',  # Standard sample rate
+                '-ac', '2',  # Stereo audio
+                '-q:a', '0',  # Highest quality VBR
                 '-y',  # Overwrite
                 output_path
             ]
@@ -151,7 +153,12 @@ class ClipExtractor:
             await asyncio.wait_for(process.wait(), timeout=30)
             
             if process.returncode == 0 and os.path.exists(output_path):
-                logger.info(f"Extracted clip: {output_path}")
+                # Validate audio quality
+                file_size = os.path.getsize(output_path)
+                if file_size < 10000:  # Less than 10KB indicates problem
+                    logger.error(f"Extracted clip too small ({file_size} bytes), likely corrupt")
+                    return False
+                logger.info(f"Extracted high-quality clip: {output_path} ({file_size/1024:.1f}KB)")
                 return True
             else:
                 logger.error(f"ffmpeg failed with return code {process.returncode}")

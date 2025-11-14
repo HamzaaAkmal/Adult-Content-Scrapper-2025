@@ -7,7 +7,8 @@ import re
 from typing import List, Dict, Optional
 from config import (
     GROQ_API_KEY, GROQ_API_URL, WHISPER_MODEL,
-    NSFW_KEYWORDS, NSFW_CATEGORIES, MIN_CONFIDENCE
+    NSFW_KEYWORDS, NSFW_CATEGORIES, MIN_CONFIDENCE,
+    MIN_KEYWORD_MATCHES, MIN_SEGMENT_LENGTH
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -105,32 +106,51 @@ class WhisperClassifier:
     
     def _analyze_segment(self, text: str) -> tuple:
         """
-        Analyze text segment for NSFW categories.
+        Analyze text segment for NSFW categories with strict ML training criteria.
         Returns (categories list, confidence score).
+        Enforces MIN_KEYWORD_MATCHES=2 and MIN_SEGMENT_LENGTH=3 for quality.
         """
+        # Filter by minimum segment length (word count)
+        if len(text.split()) < MIN_SEGMENT_LENGTH:
+            return [], 0.0
+        
         detected_categories = []
         category_scores = {}
+        total_keyword_matches = 0
         
-        # Check for explicit keywords
+        # Check for explicit keywords with stricter matching
         for category, keywords in NSFW_KEYWORDS.items():
             matches = sum(1 for keyword in keywords if keyword in text)
             if matches > 0:
-                score = min(matches * 0.3 + 0.4, 0.95)  # Scale score
+                total_keyword_matches += matches
+                # Stricter scoring for ML training (higher threshold)
+                if matches == 1:
+                    score = 0.75  # Single match = 75%
+                elif matches == 2:
+                    score = 0.88  # Two matches = 88%
+                else:
+                    score = 0.95  # 3+ matches = 95%
                 category_scores[category] = score
                 detected_categories.append(category)
         
-        # Phonetic/sound patterns (for moaning, breathing)
-        if self._has_vocal_patterns(text):
+        # Enforce minimum keyword matches for quality
+        if total_keyword_matches < MIN_KEYWORD_MATCHES:
+            return [], 0.0
+        
+        # Phonetic/sound patterns (stricter thresholds for ML)
+        vocal_pattern_strength = self._has_vocal_patterns(text)
+        if vocal_pattern_strength >= 2:  # Need multiple patterns
             if 'moaning' not in category_scores:
-                category_scores['moaning'] = 0.75
+                category_scores['moaning'] = 0.85
                 detected_categories.append('moaning')
         
-        if self._has_breathing_patterns(text):
+        breathing_pattern_strength = self._has_breathing_patterns(text)
+        if breathing_pattern_strength >= 2:  # Need multiple patterns
             if 'heavy_breathing' not in category_scores:
-                category_scores['heavy_breathing'] = 0.72
+                category_scores['heavy_breathing'] = 0.82
                 detected_categories.append('heavy_breathing')
         
-        # Calculate overall confidence
+        # Calculate overall confidence (must meet MIN_CONFIDENCE=0.90)
         if category_scores:
             confidence = max(category_scores.values())
         else:
@@ -138,22 +158,26 @@ class WhisperClassifier:
         
         return detected_categories, confidence
     
-    def _has_vocal_patterns(self, text: str) -> bool:
-        """Detect moaning/vocal patterns in transcription."""
+    def _has_vocal_patterns(self, text: str) -> int:
+        """Detect moaning/vocal patterns in transcription. Returns pattern count for strict filtering."""
         patterns = [
             r'\b(ah+|oh+|uh+|mm+|ng+h)\b',
             r'[aeiou]{3,}',  # Extended vowel sounds
             r'\b(yeah|yes)\s+(yeah|yes)\b',  # Repetitive affirmations
+            r'\b(ooh+|aah+)\b',  # Extended expressions
+            r'\b(god|fuck|yes)\s+(god|fuck|yes)\b',  # Intense repetitions
         ]
-        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+        return sum(1 for pattern in patterns if re.search(pattern, text, re.IGNORECASE))
     
-    def _has_breathing_patterns(self, text: str) -> bool:
-        """Detect heavy breathing patterns."""
+    def _has_breathing_patterns(self, text: str) -> int:
+        """Detect heavy breathing patterns. Returns pattern count for strict filtering."""
         patterns = [
             r'\b(hah|huh|hff|pff)\b',
             r'\*\s*(breath|pant|gasp)',  # Action descriptions
+            r'\b(harder|faster|deeper)\b',  # Intensity indicators
+            r'\b(panting|gasping|moaning)\b',  # Explicit breathing descriptions
         ]
-        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+        return sum(1 for pattern in patterns if re.search(pattern, text, re.IGNORECASE))
     
     async def process_audio_file(self, audio_path: str) -> List[Dict]:
         """

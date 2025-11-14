@@ -2,6 +2,8 @@
 
 An intelligent, fully autonomous Streamlit-based web scraper that extracts NSFW audio clips from video content using AI-powered classification with Groq's Whisper model.
 
+> **📊 ML Training Version Available**: This repository includes a **strict version optimized for ML training** with 90% confidence threshold, 23 NSFW categories, and 256kbps audio quality. See **[ML_TRAINING_VERSION.md](ML_TRAINING_VERSION.md)** for details.
+
 ## 🚀 Quick Deploy
 
 ### Local Machine
@@ -29,18 +31,21 @@ curl -sSL https://raw.githubusercontent.com/HamzaaAkmal/Adult-Content-Scrapper-2
 
 ### AI-Powered Classification
 - **Groq Whisper Integration**: Uses `whisper-large-v3-turbo` for accurate transcription
-- **NSFW Detection**: Identifies 6 categories of NSFW audio content:
-  - Moaning
-  - Heavy breathing
-  - Explicit language
-  - Dirty talk
-  - Orgasm sounds
-  - Roleplay
-- **Confidence scoring**: Only extracts clips with ≥70% confidence
+- **NSFW Detection**: Identifies NSFW audio content across multiple categories
+  - **Standard Version**: 6 categories (moaning, heavy_breathing, explicit_language, dirty_talk, orgasm_sounds, roleplay)
+  - **ML Training Version**: 23 comprehensive categories with expanded detection
+- **Confidence scoring**: 
+  - **Standard**: ≥70% confidence threshold
+  - **ML Training**: ≥90% confidence threshold for high-quality datasets
+- **Advanced filtering**: Keyword matching, pattern detection, segment validation
 
 ### Intelligent Clip Extraction
-- **Precise timing**: Extracts exactly 10-second clips around NSFW timestamps
-- **Multiple clips**: Up to 3 clips per video
+- **Precise timing**: Extracts clips around NSFW timestamps
+  - **Standard**: 10-second clips, up to 3 per video
+  - **ML Training**: 15-second clips, up to 5 per video
+- **High-quality audio**: 
+  - **Standard**: 192kbps MP3
+  - **ML Training**: 256kbps stereo MP3, 44.1kHz sample rate
 - **Auto-organization**: Files organized by category and source domain
 - **Rich metadata**: JSON metadata for each clip with timestamps, confidence, and categories
 
