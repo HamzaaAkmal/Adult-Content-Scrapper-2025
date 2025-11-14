@@ -136,10 +136,10 @@ class ClipExtractor:
                 '-t', str(duration),
                 '-vn',  # No video
                 '-acodec', 'libmp3lame',
-                '-b:a', '256k',  # High quality for ML training
+                '-b:a', '224k',  # Good quality for ML training
                 '-ar', '44100',  # Standard sample rate
                 '-ac', '2',  # Stereo audio
-                '-q:a', '0',  # Highest quality VBR
+                '-q:a', '2',  # High quality VBR
                 '-y',  # Overwrite
                 output_path
             ]

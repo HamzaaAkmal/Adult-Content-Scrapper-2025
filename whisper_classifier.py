@@ -106,9 +106,9 @@ class WhisperClassifier:
     
     def _analyze_segment(self, text: str) -> tuple:
         """
-        Analyze text segment for NSFW categories with strict ML training criteria.
+        Analyze text segment for NSFW categories with medium ML training criteria.
         Returns (categories list, confidence score).
-        Enforces MIN_KEYWORD_MATCHES=2 and MIN_SEGMENT_LENGTH=3 for quality.
+        Enforces MIN_KEYWORD_MATCHES=1 and MIN_SEGMENT_LENGTH=2 for balanced quality.
         """
         # Filter by minimum segment length (word count)
         if len(text.split()) < MIN_SEGMENT_LENGTH:
@@ -118,16 +118,16 @@ class WhisperClassifier:
         category_scores = {}
         total_keyword_matches = 0
         
-        # Check for explicit keywords with stricter matching
+        # Check for explicit keywords with medium matching
         for category, keywords in NSFW_KEYWORDS.items():
             matches = sum(1 for keyword in keywords if keyword in text)
             if matches > 0:
                 total_keyword_matches += matches
-                # Stricter scoring for ML training (higher threshold)
+                # Medium scoring for balanced training data
                 if matches == 1:
-                    score = 0.75  # Single match = 75%
+                    score = 0.82  # Single match = 82%
                 elif matches == 2:
-                    score = 0.88  # Two matches = 88%
+                    score = 0.90  # Two matches = 90%
                 else:
                     score = 0.95  # 3+ matches = 95%
                 category_scores[category] = score
@@ -137,20 +137,20 @@ class WhisperClassifier:
         if total_keyword_matches < MIN_KEYWORD_MATCHES:
             return [], 0.0
         
-        # Phonetic/sound patterns (stricter thresholds for ML)
+        # Phonetic/sound patterns (medium thresholds)
         vocal_pattern_strength = self._has_vocal_patterns(text)
-        if vocal_pattern_strength >= 2:  # Need multiple patterns
+        if vocal_pattern_strength >= 1:  # Need at least one pattern
             if 'moaning' not in category_scores:
                 category_scores['moaning'] = 0.85
                 detected_categories.append('moaning')
         
         breathing_pattern_strength = self._has_breathing_patterns(text)
-        if breathing_pattern_strength >= 2:  # Need multiple patterns
+        if breathing_pattern_strength >= 1:  # Need at least one pattern
             if 'heavy_breathing' not in category_scores:
                 category_scores['heavy_breathing'] = 0.82
                 detected_categories.append('heavy_breathing')
         
-        # Calculate overall confidence (must meet MIN_CONFIDENCE=0.90)
+        # Calculate overall confidence (must meet MIN_CONFIDENCE=0.85)
         if category_scores:
             confidence = max(category_scores.values())
         else:

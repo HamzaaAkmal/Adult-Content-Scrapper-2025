@@ -21,9 +21,9 @@ WHISPER_MODEL = "whisper-large-v3-turbo"
 
 # Scraping Configuration
 MAX_CONCURRENT_SCRAPES = 10
-MIN_VIDEO_DURATION = 15  # seconds - require longer videos for quality
-MAX_CLIPS_PER_VIDEO = 5  # Extract more clips per video for training data
-CLIP_DURATION = 15  # seconds - longer clips for better context
+MIN_VIDEO_DURATION = 12  # seconds - balanced video length requirement
+MAX_CLIPS_PER_VIDEO = 4  # Extract moderate clips per video for training data
+CLIP_DURATION = 12  # seconds - balanced clips for good context
 
 # Quality Control for Training Data
 MIN_AUDIO_BITRATE = 128  # kbps - minimum audio quality
@@ -98,10 +98,10 @@ NSFW_KEYWORDS = {
     "intense_activity": ["pound", "thrust", "ram", "drill", "intense"]
 }
 
-# Confidence Threshold - High threshold for quality training data
-MIN_CONFIDENCE = 0.90  # 90% confidence required for training data quality
-MIN_KEYWORD_MATCHES = 2  # Require at least 2 keyword matches per clip
-MIN_SEGMENT_LENGTH = 3  # Minimum segment length in seconds
+# Confidence Threshold - Medium threshold for balanced training data
+MIN_CONFIDENCE = 0.85  # 85% confidence required for balanced quality/quantity
+MIN_KEYWORD_MATCHES = 1  # Require at least 1 keyword match per clip
+MIN_SEGMENT_LENGTH = 2  # Minimum segment length in words
 
 # Video Detection Patterns
 VIDEO_KEYWORDS = [
