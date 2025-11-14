@@ -1,0 +1,20 @@
+[Unit]
+Description=NSFW Audio Scraper - Streamlit Application
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/Adult-Content-Scrapper-2025
+Environment="PATH=/root/Adult-Content-Scrapper-2025/venv/bin"
+ExecStart=/root/Adult-Content-Scrapper-2025/venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nsfw-scraper
+
+[Install]
+WantedBy=multi-user.target
