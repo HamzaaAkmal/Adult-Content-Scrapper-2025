@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 from urllib.parse import urlparse
-from config import CLIPS_DIR, METADATA_DIR, CLIP_DURATION, MAX_CLIPS_PER_VIDEO
+from config import CLIPS_DIR, METADATA_DIR, CLIP_DURATION, MAX_CLIPS_PER_VIDEO, MAX_CLIPS_PER_CATEGORY
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +22,8 @@ class ClipExtractor:
         self.metadata_dir = Path(METADATA_DIR)
         self.clips_dir.mkdir(exist_ok=True)
         self.metadata_dir.mkdir(exist_ok=True)
+        # Track category counts for balanced dataset
+        self.category_counts = self._load_category_counts()
         
     async def extract_clips(
         self,
@@ -32,6 +34,7 @@ class ClipExtractor:
         """
         Extract audio clips from video at NSFW timestamps.
         Returns list of extracted clip metadata.
+        Enforces MAX_CLIPS_PER_CATEGORY limit for balanced dataset.
         """
         if not nsfw_segments:
             logger.info(f"No NSFW segments for {video_path}")
@@ -44,6 +47,13 @@ class ClipExtractor:
         source_domain = self._get_domain(source_url)
         
         for idx, segment in enumerate(segments_to_process):
+            # Check if primary category has reached limit
+            primary_category = segment['categories'][0] if segment['categories'] else 'uncategorized'
+            
+            if self.category_counts.get(primary_category, 0) >= MAX_CLIPS_PER_CATEGORY:
+                logger.info(f"Category '{primary_category}' has reached maximum limit of {MAX_CLIPS_PER_CATEGORY} clips, skipping...")
+                continue
+            
             clip_info = await self._extract_single_clip(
                 video_path=video_path,
                 segment=segment,
@@ -54,6 +64,10 @@ class ClipExtractor:
             
             if clip_info:
                 clips_metadata.append(clip_info)
+                # Increment category count
+                self.category_counts[primary_category] = self.category_counts.get(primary_category, 0) + 1
+                self._save_category_counts()
+                logger.info(f"Category '{primary_category}': {self.category_counts[primary_category]}/{MAX_CLIPS_PER_CATEGORY} clips")
         
         logger.info(f"Extracted {len(clips_metadata)} clips from {video_path}")
         return clips_metadata
@@ -226,6 +240,32 @@ class ClipExtractor:
         stats['avg_confidence'] = sum(confidences) / len(confidences) if confidences else 0.0
         
         return stats
+    
+    def _load_category_counts(self) -> Dict[str, int]:
+        """Load category counts from file to persist across runs."""
+        counts_file = self.metadata_dir / 'category_counts.json'
+        if counts_file.exists():
+            try:
+                with open(counts_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading category counts: {e}")
+        return {}
+    
+    def _save_category_counts(self):
+        """Save category counts to file."""
+        counts_file = self.metadata_dir / 'category_counts.json'
+        try:
+            with open(counts_file, 'w') as f:
+                json.dump(self.category_counts, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving category counts: {e}")
+    
+    def reset_category_counts(self):
+        """Reset category counts (for starting a new dataset collection)."""
+        self.category_counts = {}
+        self._save_category_counts()
+        logger.info("Category counts reset")
 
 
 async def process_video_to_clips(

@@ -106,30 +106,43 @@ class WhisperClassifier:
     
     def _analyze_segment(self, text: str) -> tuple:
         """
-        Analyze text segment for NSFW categories with medium ML training criteria.
+        Analyze text segment for NSFW categories with high accuracy criteria.
         Returns (categories list, confidence score).
-        Enforces MIN_KEYWORD_MATCHES=1 and MIN_SEGMENT_LENGTH=2 for balanced quality.
+        Enhanced with context validation and duplicate prevention.
         """
         # Filter by minimum segment length (word count)
         if len(text.split()) < MIN_SEGMENT_LENGTH:
+            return [], 0.0
+        
+        # Check for music/non-relevant content patterns (false positive prevention)
+        if self._is_likely_music_or_irrelevant(text):
             return [], 0.0
         
         detected_categories = []
         category_scores = {}
         total_keyword_matches = 0
         
-        # Check for explicit keywords with medium matching
+        # Check for explicit keywords with strict matching
         for category, keywords in NSFW_KEYWORDS.items():
-            matches = sum(1 for keyword in keywords if keyword in text)
+            # Use whole word matching to avoid false positives
+            matches = 0
+            matched_keywords = set()
+            for keyword in keywords:
+                # Check if keyword appears with word boundaries
+                if self._keyword_in_text(keyword, text):
+                    matches += 1
+                    matched_keywords.add(keyword)
+            
             if matches > 0:
                 total_keyword_matches += matches
-                # Medium scoring for balanced training data
+                # Stricter scoring for accuracy
                 if matches == 1:
-                    score = 0.82  # Single match = 82%
+                    score = 0.85  # Single match = 85%
                 elif matches == 2:
-                    score = 0.90  # Two matches = 90%
+                    score = 0.92  # Two matches = 92%
                 else:
-                    score = 0.95  # 3+ matches = 95%
+                    score = 0.97  # 3+ matches = 97%
+                
                 category_scores[category] = score
                 detected_categories.append(category)
         
@@ -137,26 +150,26 @@ class WhisperClassifier:
         if total_keyword_matches < MIN_KEYWORD_MATCHES:
             return [], 0.0
         
-        # Phonetic/sound patterns (medium thresholds)
+        # Phonetic/sound patterns (stricter thresholds)
         vocal_pattern_strength = self._has_vocal_patterns(text)
-        if vocal_pattern_strength >= 1:  # Need at least one pattern
-            if 'moaning' not in category_scores:
-                category_scores['moaning'] = 0.85
+        if vocal_pattern_strength >= 2:  # Need at least TWO patterns
+            if 'moaning' not in category_scores and total_keyword_matches >= 1:
+                category_scores['moaning'] = 0.87
                 detected_categories.append('moaning')
         
         breathing_pattern_strength = self._has_breathing_patterns(text)
-        if breathing_pattern_strength >= 1:  # Need at least one pattern
-            if 'heavy_breathing' not in category_scores:
-                category_scores['heavy_breathing'] = 0.82
+        if breathing_pattern_strength >= 2:  # Need at least TWO patterns
+            if 'heavy_breathing' not in category_scores and total_keyword_matches >= 1:
+                category_scores['heavy_breathing'] = 0.85
                 detected_categories.append('heavy_breathing')
         
-        # Calculate overall confidence (must meet MIN_CONFIDENCE=0.85)
-        if category_scores:
-            confidence = max(category_scores.values())
+        # Keep only the most confident category to avoid duplicates
+        if detected_categories and category_scores:
+            best_category = max(category_scores, key=category_scores.get)
+            confidence = category_scores[best_category]
+            return [best_category], confidence
         else:
-            confidence = 0.0
-        
-        return detected_categories, confidence
+            return [], 0.0
     
     def _has_vocal_patterns(self, text: str) -> int:
         """Detect moaning/vocal patterns in transcription. Returns pattern count for strict filtering."""
@@ -178,6 +191,28 @@ class WhisperClassifier:
             r'\b(panting|gasping|moaning)\b',  # Explicit breathing descriptions
         ]
         return sum(1 for pattern in patterns if re.search(pattern, text, re.IGNORECASE))
+    
+    def _keyword_in_text(self, keyword: str, text: str) -> bool:
+        """Check if keyword exists in text with word boundary matching to avoid false positives."""
+        # For multi-word keywords, use simple 'in' check
+        if ' ' in keyword:
+            return keyword in text
+        # For single words, use word boundary matching
+        pattern = r'\b' + re.escape(keyword) + r'\b'
+        return bool(re.search(pattern, text, re.IGNORECASE))
+    
+    def _is_likely_music_or_irrelevant(self, text: str) -> bool:
+        """Detect non-NSFW content like music, ads, or general conversation."""
+        music_patterns = [
+            r'\b(song|music|instrumental|beat|rhythm|melody)\b',
+            r'\b(subscribe|like|comment|channel|video)\b',  # YouTube-style content
+            r'\b(intro|outro|advertisement|ad|sponsor)\b',
+            r'\[music\]|\(music\)',
+        ]
+        
+        # If text heavily features music/irrelevant patterns, reject it
+        irrelevant_matches = sum(1 for pattern in music_patterns if re.search(pattern, text, re.IGNORECASE))
+        return irrelevant_matches >= 2  # Need at least 2 irrelevant patterns to reject
     
     async def process_audio_file(self, audio_path: str) -> List[Dict]:
         """
