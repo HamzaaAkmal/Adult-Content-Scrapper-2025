@@ -189,29 +189,46 @@ class NSFWScraper:
             self.progress_callback(message)
     
     def create_download_zip(self, output_zip: str = "nsfw_clips.zip") -> str:
-        """Create a ZIP file of all extracted clips and metadata."""
+        """Create a ZIP file of only the latest clips and metadata (no old data)."""
         try:
             from config import CLIPS_DIR, METADATA_DIR
+            import zipfile
+            import tempfile
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            zip_name = f"nsfw_clips_{timestamp}"
+            zip_name = f"nsfw_clips_{timestamp}.zip"
             
-            # Create archive
-            archive_path = shutil.make_archive(
-                zip_name,
-                'zip',
-                root_dir=Path(CLIPS_DIR).parent,
-                base_dir=Path(CLIPS_DIR).name
-            )
+            # Create a fresh temporary directory for only latest data
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_clips = Path(temp_dir) / 'clips'
+                temp_metadata = Path(temp_dir) / 'metadata'
+                temp_clips.mkdir(exist_ok=True)
+                temp_metadata.mkdir(exist_ok=True)
+                
+                # Copy only current clips (organized by category)
+                clips_dir = Path(CLIPS_DIR)
+                if clips_dir.exists():
+                    for category_dir in clips_dir.iterdir():
+                        if category_dir.is_dir():
+                            # Copy entire category folder structure
+                            dest_category = temp_clips / category_dir.name
+                            shutil.copytree(category_dir, dest_category)
+                
+                # Copy only current metadata files
+                metadata_dir = Path(METADATA_DIR)
+                if metadata_dir.exists():
+                    for meta_file in metadata_dir.glob('*.json'):
+                        shutil.copy2(meta_file, temp_metadata / meta_file.name)
+                
+                # Create ZIP from temp directory (only latest data, no old folders)
+                archive_path = shutil.make_archive(
+                    f"nsfw_clips_{timestamp}",
+                    'zip',
+                    root_dir=temp_dir,
+                    base_dir='.'
+                )
             
-            # Also add metadata
-            if Path(METADATA_DIR).exists():
-                import zipfile
-                with zipfile.ZipFile(archive_path, 'a') as zipf:
-                    for meta_file in Path(METADATA_DIR).glob('*.json'):
-                        zipf.write(meta_file, f'metadata/{meta_file.name}')
-            
-            logger.info(f"Created ZIP archive: {archive_path}")
+            logger.info(f"Created fresh ZIP archive with latest data only: {archive_path}")
             return archive_path
             
         except Exception as e:

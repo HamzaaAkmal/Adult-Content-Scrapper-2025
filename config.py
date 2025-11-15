@@ -20,13 +20,13 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 WHISPER_MODEL = "whisper-large-v3-turbo"
 
 # Scraping Configuration
-MAX_CONCURRENT_SCRAPES = 5  # Reduced for better quality control
+MAX_CONCURRENT_SCRAPES = 50  # High concurrency for faster data collection
 MIN_VIDEO_DURATION = 15  # seconds - longer videos for better content
 MAX_CLIPS_PER_VIDEO = 3  # Extract fewer, higher quality clips per video
 CLIP_DURATION = 10  # seconds - standard clip length
 
 # Dataset Balancing Configuration
-MAX_CLIPS_PER_CATEGORY = 100  # Maximum 100 MP3s per category for balanced dataset
+MAX_CLIPS_PER_CATEGORY = 500  # Maximum 500 MP3s per category for larger dataset
 
 # Quality Control for Training Data
 MIN_AUDIO_BITRATE = 128  # kbps - minimum audio quality
