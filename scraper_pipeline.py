@@ -26,11 +26,48 @@ class NSFWScraper:
         self.classifier = WhisperClassifier()
         self.extractor = ClipExtractor()
         self.progress_callback = progress_callback
+    
+    def cleanup_old_data(self):
+        """Clean up old temporary files and ZIPs before starting fresh scrape."""
+        from config import TEMP_DIR, BASE_DIR
         
-    async def scrape_from_urls(self, website_urls: List[str]) -> Dict:
+        logger.info("Cleaning up old temporary files and ZIPs...")
+        
+        # Clean temp directory
+        temp_dir = Path(TEMP_DIR)
+        if temp_dir.exists():
+            for item in temp_dir.iterdir():
+                try:
+                    if item.is_file():
+                        item.unlink()
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                except Exception as e:
+                    logger.warning(f"Could not delete {item}: {e}")
+        
+        # Clean old ZIP files
+        base_dir = Path(BASE_DIR)
+        for old_zip in base_dir.glob("nsfw_clips_*.zip"):
+            try:
+                old_zip.unlink()
+                logger.info(f"Deleted old ZIP: {old_zip.name}")
+            except Exception as e:
+                logger.warning(f"Could not delete {old_zip.name}: {e}")
+        
+        logger.info("Cleanup complete - ready for fresh data collection")
+        
+    async def scrape_from_urls(self, website_urls: List[str], clean_old_data: bool = True) -> Dict:
         """
         Main pipeline: crawl websites → download videos → classify → extract clips.
+        
+        Args:
+            website_urls: List of URLs to scrape
+            clean_old_data: If True, cleans temp files and old ZIPs before starting
         """
+        # Clean old data if requested
+        if clean_old_data:
+            self.cleanup_old_data()
+        
         results = {
             'total_websites': len(website_urls),
             'videos_found': 0,
@@ -189,47 +226,48 @@ class NSFWScraper:
             self.progress_callback(message)
     
     def create_download_zip(self, output_zip: str = "nsfw_clips.zip") -> str:
-        """Create a ZIP file of only the latest clips and metadata (no old data)."""
+        """Create a ZIP file of ONLY the latest clips and metadata. Cleans old ZIPs first."""
         try:
-            from config import CLIPS_DIR, METADATA_DIR
+            from config import CLIPS_DIR, METADATA_DIR, BASE_DIR
             import zipfile
-            import tempfile
+            import glob
+            
+            # Step 1: Delete all old ZIP files in the base directory
+            logger.info("Cleaning up old ZIP files...")
+            base_dir = Path(BASE_DIR)
+            for old_zip in base_dir.glob("nsfw_clips_*.zip"):
+                try:
+                    old_zip.unlink()
+                    logger.info(f"Deleted old ZIP: {old_zip.name}")
+                except Exception as e:
+                    logger.warning(f"Could not delete {old_zip.name}: {e}")
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            zip_name = f"nsfw_clips_{timestamp}.zip"
+            zip_path = base_dir / f"nsfw_clips_{timestamp}.zip"
             
-            # Create a fresh temporary directory for only latest data
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_clips = Path(temp_dir) / 'clips'
-                temp_metadata = Path(temp_dir) / 'metadata'
-                temp_clips.mkdir(exist_ok=True)
-                temp_metadata.mkdir(exist_ok=True)
-                
-                # Copy only current clips (organized by category)
+            # Step 2: Create fresh ZIP with ONLY current data
+            logger.info("Creating fresh ZIP with latest data only...")
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # Add clips (organized by category)
                 clips_dir = Path(CLIPS_DIR)
                 if clips_dir.exists():
                     for category_dir in clips_dir.iterdir():
-                        if category_dir.is_dir():
-                            # Copy entire category folder structure
-                            dest_category = temp_clips / category_dir.name
-                            shutil.copytree(category_dir, dest_category)
+                        if category_dir.is_dir() and not category_dir.name.startswith('.'):
+                            # Add all files in this category
+                            for file_path in category_dir.rglob('*'):
+                                if file_path.is_file():
+                                    arcname = str(file_path.relative_to(clips_dir.parent))
+                                    zipf.write(file_path, arcname)
                 
-                # Copy only current metadata files
+                # Add metadata files
                 metadata_dir = Path(METADATA_DIR)
                 if metadata_dir.exists():
                     for meta_file in metadata_dir.glob('*.json'):
-                        shutil.copy2(meta_file, temp_metadata / meta_file.name)
-                
-                # Create ZIP from temp directory (only latest data, no old folders)
-                archive_path = shutil.make_archive(
-                    f"nsfw_clips_{timestamp}",
-                    'zip',
-                    root_dir=temp_dir,
-                    base_dir='.'
-                )
+                        arcname = f"metadata/{meta_file.name}"
+                        zipf.write(meta_file, arcname)
             
-            logger.info(f"Created fresh ZIP archive with latest data only: {archive_path}")
-            return archive_path
+            logger.info(f"Created fresh ZIP archive: {zip_path} (old ZIPs removed)")
+            return str(zip_path)
             
         except Exception as e:
             logger.error(f"Error creating ZIP: {e}")
