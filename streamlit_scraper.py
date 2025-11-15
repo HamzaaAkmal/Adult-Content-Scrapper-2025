@@ -10,8 +10,6 @@ from pathlib import Path
 import time
 import zipfile
 from datetime import datetime
-import threading
-import queue
 
 # Configuration
 OUTPUT_DIR = r"c:\Users\Hamza\Desktop\NSFW Voice Dataset\binary training data\safe"
@@ -269,39 +267,60 @@ def create_zip_archive(source_dir, zip_path, file_pattern="*.mp3"):
     
     return len(files)
 
-def scrape_worker(category, videos, progress_queue, log_queue):
-    """Worker function for scraping in background"""
+def scrape_category(category, videos, progress_callback=None, log_callback=None):
+    """Download and process videos for a category"""
     try:
-        log_queue.put(f"Starting {category}...")
+        if log_callback:
+            log_callback(f"Starting {category}...")
+        
         downloaded = 0
         segments_created = 0
         
         for idx, video_url in enumerate(videos, 1):
-            log_queue.put(f"[{category}] Downloading video {idx}/{len(videos)}...")
+            if log_callback:
+                log_callback(f"[{category}] Downloading video {idx}/{len(videos)}...")
             
             temp_file = os.path.join(TEMP_DIR, f"{category}_temp_{idx}.wav")
             
-            if download_audio(video_url, temp_file):
-                if os.path.exists(temp_file):
-                    base_name = f"vid{idx:03d}"
-                    segments = split_audio_to_segments(temp_file, category, base_name, DURATION)
-                    segments_created += len(segments)
-                    
-                    try:
-                        os.remove(temp_file)
-                    except:
-                        pass
-                    
-                    downloaded += 1
-                    log_queue.put(f"[{category}] ✅ Video {idx}: {len(segments)} segments")
+            # Download video
+            download_success = download_audio(video_url, temp_file)
             
-            progress_queue.put((category, idx, len(videos), segments_created))
+            if download_success and os.path.exists(temp_file):
+                if log_callback:
+                    log_callback(f"[{category}] ✅ Downloaded, creating segments...")
+                
+                # Split into segments
+                base_name = f"vid{idx:03d}"
+                segments = split_audio_to_segments(temp_file, category, base_name, DURATION)
+                segments_created += len(segments)
+                
+                if log_callback:
+                    log_callback(f"[{category}] ✅ Video {idx}: Created {len(segments)} segments")
+                
+                # Clean up temp file
+                try:
+                    os.remove(temp_file)
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"[{category}] ⚠️ Could not delete temp file: {e}")
+                
+                downloaded += 1
+            else:
+                if log_callback:
+                    log_callback(f"[{category}] ❌ Failed to download video {idx}")
+            
+            if progress_callback:
+                progress_callback(idx, len(videos))
+            
             time.sleep(1)
         
-        log_queue.put(f"✅ {category} complete: {segments_created} segments")
+        if log_callback:
+            log_callback(f"✅ {category} complete: {downloaded} videos, {segments_created} segments")
+        
         return segments_created
     except Exception as e:
-        log_queue.put(f"❌ Error in {category}: {str(e)}")
+        if log_callback:
+            log_callback(f"❌ Error in {category}: {str(e)}")
         return 0
 
 # Streamlit UI
@@ -371,54 +390,36 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("📥 Download Videos", type="primary", disabled=len(missing) > 0):
-        if 'scraping_active' not in st.session_state:
-            st.session_state.scraping_active = True
-            st.session_state.progress_data = {}
-            st.session_state.logs = []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        log_container = st.container()
+        
+        total_categories = len(CATEGORIES)
+        total_segments = 0
+        
+        for cat_idx, (cat_key, cat_name) in enumerate(CATEGORIES.items(), 1):
+            status_text.text(f"Processing {cat_name} ({cat_idx}/{total_categories})...")
             
-            progress_bar = st.progress(0)
-            log_container = st.container()
+            videos = SAFE_VIDEOS[cat_key][:videos_per_cat]
             
-            progress_queue = queue.Queue()
-            log_queue = queue.Queue()
+            def log_func(msg):
+                with log_container:
+                    st.text(msg)
             
-            total_videos = len(CATEGORIES) * videos_per_cat
-            completed_videos = 0
+            def progress_func(current, total):
+                cat_progress = (cat_idx - 1) / total_categories
+                video_progress = (current / total) / total_categories
+                overall_progress = cat_progress + video_progress
+                progress_bar.progress(overall_progress)
             
-            threads = []
-            for cat_key, cat_name in CATEGORIES.items():
-                videos = SAFE_VIDEOS[cat_key][:videos_per_cat]
-                thread = threading.Thread(
-                    target=scrape_worker,
-                    args=(cat_key, videos, progress_queue, log_queue)
-                )
-                thread.start()
-                threads.append(thread)
-            
-            status_text = st.empty()
-            
-            while any(t.is_alive() for t in threads):
-                while not log_queue.empty():
-                    log = log_queue.get()
-                    with log_container:
-                        st.text(log)
-                
-                while not progress_queue.empty():
-                    cat, vid_num, total_vids, segs = progress_queue.get()
-                    completed_videos += 1
-                    progress = completed_videos / total_videos
-                    progress_bar.progress(progress)
-                    status_text.text(f"Progress: {completed_videos}/{total_videos} videos")
-                
-                time.sleep(0.5)
-            
-            for thread in threads:
-                thread.join()
-            
-            progress_bar.progress(1.0)
-            st.success("✅ Download complete!")
-            st.session_state.scraping_active = False
-            st.rerun()
+            segments = scrape_category(cat_key, videos, progress_func, log_func)
+            total_segments += segments
+        
+        progress_bar.progress(1.0)
+        status_text.text(f"✅ Download complete! Created {total_segments} segments")
+        st.success(f"✅ Successfully created {total_segments} audio segments!")
+        time.sleep(2)
+        st.rerun()
 
 with col2:
     if st.button("🔄 Convert to MP3", disabled=existing_count == 0):
